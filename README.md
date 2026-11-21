@@ -30,7 +30,17 @@ Run `node --test src/equipment.test.js` for validation and ownership/mutation te
 
 ## Implementation status
 
-Authentication, equipment moderation, favorites, booking checkout and payment webhook code are implemented. Analytics, remaining dashboard features and production deployment remain unfinished. External service flows still require end-to-end verification with configured credentials. Live URL: not deployed.
+Authentication, equipment moderation, favorites, booking checkout, payment webhooks, profiles, user management, rental management and owner/admin analytics code are implemented. Production deployment and full acceptance testing remain unfinished. External service flows still require end-to-end verification with configured credentials. Live URL: not deployed.
+
+## Dashboard management
+
+- `PATCH /api/me` updates only name, photo URL, phone and address. Email changes use Better Auth's `change-email` flow. Without email verification, only currently unverified emails can change; verified Google emails remain read-only in the interface.
+- `GET /api/owner/rentals` and `GET /api/admin/rentals` return role-scoped booking records.
+- `PATCH /api/owner/rentals/:id/status` and the corresponding admin endpoint support starting paid rentals on/after their start date and completing them after their inclusive end date. Payment status is never modified by these actions.
+- `GET /api/owner/analytics` and `GET /api/admin/analytics` aggregate equipment, bookings and successful payment data. Admins also receive total user count. Charts cover the last twelve UTC calendar months, filling missing months with zeros. Revenue values are minor currency units.
+- `GET /api/admin/users` and `PATCH /api/admin/users/:id` support role changes and suspension/reactivation. Self-modification is blocked. Suspended accounts are denied protected API access even when their JWT remains valid.
+
+Run `node --test src/equipment.test.js src/rentals.test.js src/dashboard.test.js` for the current API tests.
 
 ## Rentals and Stripe setup
 

@@ -17,6 +17,7 @@ export function createAuthorization(database) {
       if (ObjectId.isValid(payload.sub)) ids.push({ _id: new ObjectId(payload.sub) });
       const user = await database.collection('user').findOne({ $or: ids });
       if (!user) return res.status(401).json({ message: 'Account no longer exists.' });
+      if (user.suspended) return res.status(403).json({ message: 'This account is suspended. Contact the platform administrator.' });
       req.user = user;
       next();
     } catch (error) { next(error); }

@@ -7,6 +7,7 @@ import { createAuth } from './auth.js';
 import { createAuthorization } from './middleware.js';
 import { equipmentRouter } from './equipment.js';
 import { rentalService, rentalIndexes } from './rentals.js';
+import { dashboardRouter } from './dashboard.js';
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000', credentials: true }));
@@ -28,8 +29,8 @@ app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), ren
 app.use(express.json());
 const { verifyToken, verifyRenter, verifyOwner, verifyAdmin } = createAuthorization(database);
 app.get('/api/me', verifyToken, (req, res) => {
-  const { _id, name, email, image, role, phone, address } = req.user;
-  res.json({ id: String(_id), name, email, image, role, phone, address });
+  const { _id, name, email, emailVerified, image, role, phone, address } = req.user;
+  res.json({ id: String(_id), name, email, emailVerified, image, role, phone, address });
 });
 app.get('/api/customer/access', verifyToken, verifyRenter, (_req, res) => res.json({ role: 'customer' }));
 app.get('/api/owner/access', verifyToken, verifyOwner, (_req, res) => res.json({ role: 'owner' }));
@@ -65,6 +66,7 @@ app.get('/api/equipment', async (req, res, next) => {
 });
 app.use('/api', equipmentRouter(database, { verifyToken, verifyOwner, verifyAdmin }));
 app.use('/api/customer', rentals.router({ verifyToken, verifyRenter }));
+app.use('/api', dashboardRouter(database, { verifyToken, verifyOwner, verifyAdmin }));
 app.use((_req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
 app.use((error, _req, res, _next) => {
   if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Image must be smaller than 5 MB.' });

@@ -14,7 +14,7 @@ export function createAuth(database) {
     database: mongodbAdapter(database),
     trustedOrigins: [process.env.CLIENT_ORIGIN || 'http://localhost:3000'],
     emailAndPassword: { enabled: true, minPasswordLength: 6, requireEmailVerification: false },
-    user: { additionalFields: {
+    user: { changeEmail: { enabled: true, updateEmailWithoutVerification: true }, additionalFields: {
       role: { type: 'string', defaultValue: 'customer', input: false },
       phone: { type: 'string', required: false },
       address: { type: 'string', required: false },
