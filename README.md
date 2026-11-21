@@ -30,4 +30,29 @@ Run `node --test src/equipment.test.js` for validation and ownership/mutation te
 
 ## Implementation status
 
-Authentication requires configured MongoDB and OAuth credentials for end-to-end verification. Stripe checkout, rental management, moderation, analytics and production deployment remain to be implemented. Live URL: not deployed.
+Authentication, equipment moderation, favorites, booking checkout and payment webhook code are implemented. Analytics, remaining dashboard features and production deployment remain unfinished. External service flows still require end-to-end verification with configured credentials. Live URL: not deployed.
+
+## Rentals and Stripe setup
+
+Use MongoDB Atlas or another replica set: rental holds and payment fulfillment require transactions. Startup creates unique indexes for favorites, booking Checkout Session IDs and payment Checkout Session IDs.
+
+Set `STRIPE_SECRET_KEY` to your Stripe test secret. Forward signed snapshot events to `POST /api/payments/webhook`. For local testing with the Stripe CLI:
+
+```text
+stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5000/api/payments/webhook
+```
+
+Put the listener's signing secret in `STRIPE_WEBHOOK_SECRET` and restart the API. For production, register the HTTPS endpoint and use that endpoint's own signing secret. Only card payments are enabled. Fulfillment verifies the signature, paid status, amount, currency and customer reference before transactionally inserting booking and payment records. Duplicate events do not duplicate records.
+
+Daily rentals count both start and end dates. Weekly periods are 7 days and monthly periods are 30 days, rounded up. Amounts in holds, bookings and payments are stored in minor currency units (BDT poisha). Dates are UTC calendar dates. Rental duration is limited to 366 days.
+
+Concurrent bookings serialize through an equipment-document write inside a transaction, then check peak overlapping reserved quantities. Holds remain until Stripe reports expiration or confirms payment. Cancelling the browser redirect does not release inventory early. If Checkout creation fails ambiguously, the hold is deliberately retained to prevent overselling; operator reconciliation of stuck `creating` holds is still required. Do not delete such holds without checking Stripe for a corresponding payable session.
+
+- `GET /api/customer/favorites`
+- `PUT /api/customer/favorites/:equipmentId`
+- `DELETE /api/customer/favorites/:equipmentId`
+- `POST /api/customer/checkout`
+- `GET /api/customer/rentals`
+- `GET /api/customer/payments/:sessionId`
+
+Run `node --test src/equipment.test.js src/rentals.test.js`. Database doubles test request rules and webhook idempotency; live MongoDB concurrency and Stripe Checkout remain integration checks to run with credentials. Never use real card details for test-mode payments.

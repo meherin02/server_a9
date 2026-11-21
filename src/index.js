@@ -6,19 +6,25 @@ import { toNodeHandler } from 'better-auth/node';
 import { createAuth } from './auth.js';
 import { createAuthorization } from './middleware.js';
 import { equipmentRouter } from './equipment.js';
+import { rentalService, rentalIndexes } from './rentals.js';
 
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000', credentials: true }));
 let database;
+let mongoClient;
 if (process.env.MONGODB_URI) {
   const client = new MongoClient(process.env.MONGODB_URI);
   await client.connect();
   database = client.db(process.env.MONGODB_DB || 'gearharbor');
+  mongoClient = client;
+  await rentalIndexes(database);
   const auth = createAuth(database);
   app.all('/api/auth/*splat', toNodeHandler(auth));
 } else {
   app.all('/api/auth/*splat', (_req, res) => res.status(503).json({ message: 'Configure MongoDB and Better Auth before signing in.' }));
 }
+const rentals = rentalService(database, mongoClient);
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), rentals.webhook);
 app.use(express.json());
 const { verifyToken, verifyRenter, verifyOwner, verifyAdmin } = createAuthorization(database);
 app.get('/api/me', verifyToken, (req, res) => {
@@ -58,6 +64,7 @@ app.get('/api/equipment', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 app.use('/api', equipmentRouter(database, { verifyToken, verifyOwner, verifyAdmin }));
+app.use('/api/customer', rentals.router({ verifyToken, verifyRenter }));
 app.use((_req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
 app.use((error, _req, res, _next) => {
   if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Image must be smaller than 5 MB.' });
