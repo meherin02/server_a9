@@ -2,7 +2,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { ObjectId } from 'mongodb';
 
 export function createAuthorization(database) {
-  const issuer = process.env.BETTER_AUTH_URL || 'http://localhost:5000';
+  const issuer = new URL(process.env.BETTER_AUTH_URL || 'http://localhost:5000').origin;
   const jwks = createRemoteJWKSet(new URL('/api/auth/jwks', issuer));
   async function verifyToken(req, res, next) {
     if (!database) return res.status(503).json({ message: 'Authentication is not configured.' });

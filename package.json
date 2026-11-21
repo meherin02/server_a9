@@ -1,1 +1,27 @@
-{"name":"gearharbor-server","version":"0.1.0","private":true,"type":"module","scripts":{"dev":"node --watch --env-file=.env src/index.js","start":"node src/index.js","check":"node --check src/index.js"},"dependencies":{"@better-auth/mongo-adapter":"^1.7.27","better-auth":"latest","cors":"latest","dotenv":"latest","express":"latest","jose":"latest","mongodb":"latest","stripe":"latest"}}
+{
+  "name": "gearharbor-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/index.js",
+    "start": "node src/index.js",
+    "check": "node --check src/index.js",
+    "test": "node --test src/equipment.test.js src/rentals.test.js src/dashboard.test.js scripts/environment.test.mjs",
+    "seed:equipment": "node scripts/seed-equipment.mjs",
+    "check:env": "node scripts/check-env.mjs",
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "check:services": "node scripts/check-env.mjs --online",
+    "setup": "node scripts/setup.mjs"
+  },
+  "dependencies": {
+    "@better-auth/mongo-adapter": "^1.7.27",
+    "better-auth": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "jose": "latest",
+    "mongodb": "latest",
+    "stripe": "latest"
+  }
+}

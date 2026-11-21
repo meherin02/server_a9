@@ -4,6 +4,8 @@ Equipment rental marketplace API built with Express, MongoDB, Better Auth, JWT v
 
 ## Setup
 
+For the complete service configuration and testing sequence, follow [SETUP.md](SETUP.md). Start with `npm run setup`, then fill the ignored local environment files and run `npm run check:env`. `npm run check:services` explicitly checks MongoDB and Stripe connectivity. `npm run bootstrap` provisions configured Admin and Owner accounts; `npm run seed:equipment` uploads six illustrative equipment images and adds demo listings. These commands preserve existing configuration and do not print credentials.
+
 Run `npm install`, copy `.env.example` to `.env`, and supply your MongoDB connection string and a random Better Auth secret of at least 32 characters. Set the frontend origin and auth base URL to match your environment. Start with `npm run dev`.
 
 For Google sign-in, configure a Google OAuth web client with `http://localhost:5000/api/auth/callback/google` as a development redirect URI. Supply its client ID and secret in the server environment. Configure the corresponding HTTPS callback before deployment.
