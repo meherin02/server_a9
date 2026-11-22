@@ -15,6 +15,16 @@ export function createAuth(database) {
     trustedOrigins: [process.env.CLIENT_ORIGIN || 'http://localhost:3000'],
     onAPIError: { errorURL: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/login` },
     emailAndPassword: { enabled: true, minPasswordLength: 6, requireEmailVerification: false },
+    account: {
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: false,
+        // This assignment intentionally has no local email-verification flow.
+        // The OAuth provider must still verify the matching email: no provider is force-trusted.
+        requireLocalEmailVerified: false,
+        allowDifferentEmails: false,
+      },
+    },
     user: { changeEmail: { enabled: true, updateEmailWithoutVerification: true }, additionalFields: {
       role: { type: 'string', defaultValue: 'customer', input: false },
       phone: { type: 'string', required: false },
