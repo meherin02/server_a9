@@ -10,7 +10,7 @@ Run `npm install`, copy `.env.example` to `.env`, and supply your MongoDB connec
 
 For Google sign-in, configure a Google OAuth web client with `http://localhost:5000/api/auth/callback/google` as a development redirect URI. Supply its client ID and secret in the server environment. Configure the corresponding HTTPS callback before deployment.
 
-New accounts receive the customer role. The role cannot be set during registration. Protected endpoints verify JWTs against Better Auth's JWKS and load the current database role. Customer, owner, and admin middleware are implemented. No admin account is seeded yet.
+New accounts receive the customer role. The role cannot be set during registration. Protected endpoints verify JWTs against Better Auth's JWKS and load the current database role. Customer, owner, and admin middleware are implemented. Admin and Owner accounts have been provisioned; passwords are not stored in the repository.
 
 ## Current endpoints
 
@@ -32,7 +32,7 @@ Run `node --test src/equipment.test.js` for validation and ownership/mutation te
 
 ## Implementation status
 
-Authentication, equipment moderation, favorites, booking checkout, payment webhooks, profiles, user management, rental management and owner/admin analytics code are implemented. Production deployment and full acceptance testing remain unfinished. External service flows still require end-to-end verification with configured credentials. Live URL: not deployed.
+Authentication, equipment moderation, favorites, booking checkout, payment webhooks, profiles, user management, rental management and owner/admin analytics code are implemented. Live API: https://server-a9.onrender.com/ . Live client: https://gearharbor-client.vercel.app/ . Final production acceptance checks remain required; user-reported webhook success has not been independently inspected.
 
 ## Dashboard management
 
@@ -74,8 +74,20 @@ Run `node --test src/equipment.test.js src/rentals.test.js`. Database doubles te
 
 ## Deployment
 
+Production API acceptance tools:
+
+- `node scripts/verify-dashboards.mjs --production` checks the configured Owner/Admin login, JWT, analytics totals and cross-role denial through the public frontend proxy.
+- `node scripts/verify-equipment-workflow.mjs` creates a temporary zero-stock listing, tests owner updates and admin approval/rejection/public visibility, then archives the listing and signs out its test sessions. It also checks profile saves without changing profile values. Run deliberately against the deployed assignment environment; it writes test data.
+
+These checks passed during acceptance verification: three paid rental records, BDT 6,450 total earnings/revenue, twelve monthly chart points, role isolation, equipment CRUD/moderation and profile saves. These are point-in-time results; browser private-route reloads and Google OAuth should still be checked separately.
+
 Follow [DEPLOYMENT.md](DEPLOYMENT.md) before publishing the Express service.
 
 Server repository: https://github.com/meherin02/server_a9
 
 Client repository: https://github.com/meherin02/client_a9
+
+## npm packages
+
+Express, cors, dotenv, mongodb, better-auth, @better-auth/mongo-adapter, jose, and stripe. See package.json and package-lock.json for installed versions.
+

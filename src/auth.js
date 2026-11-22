@@ -13,6 +13,7 @@ export function createAuth(database) {
     secret: process.env.BETTER_AUTH_SECRET,
     database: mongodbAdapter(database),
     trustedOrigins: [process.env.CLIENT_ORIGIN || 'http://localhost:3000'],
+    onAPIError: { errorURL: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/login` },
     emailAndPassword: { enabled: true, minPasswordLength: 6, requireEmailVerification: false },
     user: { changeEmail: { enabled: true, updateEmailWithoutVerification: true }, additionalFields: {
       role: { type: 'string', defaultValue: 'customer', input: false },

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { loadEnvironment } from './environment.mjs';
 loadEnvironment();
-const base = new URL(process.env.BETTER_AUTH_URL || 'http://localhost:5000').origin;
-const origin = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
+const production = process.argv.includes('--production');
+const base = production ? 'https://gearharbor-client.vercel.app' : new URL(process.env.BETTER_AUTH_URL || 'http://localhost:5000').origin;
+const origin = production ? base : process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 for (const role of ['owner', 'admin']) {
   let cookie;
   try {
