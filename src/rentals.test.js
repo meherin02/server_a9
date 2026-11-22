@@ -2,10 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Stripe from 'stripe';
 import { ObjectId } from 'mongodb';
-import { rentalPrice, peakQuantity, rentalService } from './rentals.js';
+import { rentalPrice, peakQuantity, rentalService, releaseExpiredReservations } from './rentals.js';
 import express from 'express';
 const now = new Date('2026-11-21T00:00:00Z');
 const input = { startDate: '2026-11-21', endDate: '2026-11-21', quantity: 2 };
+test('expiration recovery releases only verified expired unpaid sessions', async () => {
+  const writes=[];
+  const rows=['expired','paid','open','unreachable'].map(id=>({_id:id,checkoutSessionId:id}));
+  const db={collection:()=>({find:filter=>{assert.equal(filter.status,'reserved');return{limit:()=>({toArray:async()=>rows})};},updateOne:async(filter,update)=>writes.push({filter,update})})};
+  const stripe={checkout:{sessions:{retrieve:async id=>{if(id==='unreachable')throw new Error('offline');return{id,status:id==='expired'?'expired':id==='paid'?'complete':'open',payment_status:id==='paid'?'paid':'unpaid'};}}}};
+  await releaseExpiredReservations(db,stripe,'equipment-1');
+  assert.equal(writes.length,1);assert.equal(writes[0].filter._id,'expired');assert.equal(writes[0].filter.status,'reserved');assert.equal(writes[0].update.$set.status,'expired');
+});
 test('rental history recovers verified paid sessions once and scopes reconciliation to the customer', async () => {
   const hold = { _id: new ObjectId(), customerId: 'customer-1', ownerId: 'owner-1', checkoutSessionId: 'cs_recover', status: 'reserved', total: 90000, currency: 'bdt' };
   const bookings = [], payments = [];

@@ -41,6 +41,17 @@ export async function rentalIndexes(db) {
     db.collection('holds').createIndex({ equipmentId: 1, status: 1, startDate: 1, endDate: 1 }),
   ]);
 }
+export async function releaseExpiredReservations(db, stripe, equipmentId) {
+  const pending = await db.collection('holds').find({ equipmentId, status: 'reserved', checkoutSessionId: { $type: 'string' } }).limit(25).toArray();
+  await Promise.all(pending.map(async hold => {
+    try {
+      const checkout = await stripe.checkout.sessions.retrieve(hold.checkoutSessionId, {}, { timeout: 5000, maxNetworkRetries: 0 });
+      if (checkout.status === 'expired' && checkout.payment_status === 'unpaid') {
+        await db.collection('holds').updateOne({ _id: hold._id, checkoutSessionId: checkout.id, status: 'reserved' }, { $set: { status: 'expired', updatedAt: new Date() } });
+      }
+    } catch { /* Keep inventory reserved when Stripe cannot verify expiration. */ }
+  }));
+}
 export function rentalService(db, client, stripeClient) {
   const stripe = stripeClient || (process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null);
   const transaction = async work => { const session = client.startSession(); try { return await session.withTransaction(() => work(session)); } finally { await session.endSession(); } };
@@ -110,6 +121,7 @@ export function rentalService(db, client, stripeClient) {
       if (!/^[a-f\d]{24}$/i.test(body.equipmentId)) return res.status(400).json({ message: 'Invalid equipment ID.' });
       if (typeof body.contact !== 'string' || !/^[+\d ()-]{7,25}$/.test(body.contact) || typeof body.address !== 'string' || body.address.trim().length < 5 || body.address.length > 1000 || (body.notes && (typeof body.notes !== 'string' || body.notes.length > 2000))) return res.status(400).json({ message: 'Provide a valid contact number, delivery address, and notes under 2000 characters.' });
       const holdId = new ObjectId(); let hold;
+      await releaseExpiredReservations(db, stripe, body.equipmentId);
       try {
         hold = await transaction(async session => {
           const item = await db.collection('equipment').findOneAndUpdate({ _id: new ObjectId(body.equipmentId), status: 'approved', archived: { $ne: true } }, { $inc: { reservationRevision: 1 } }, { returnDocument: 'after', session });
