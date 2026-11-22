@@ -18,7 +18,7 @@ if (process.argv.includes('--online')) {
     } catch (error) { problems.push('MongoDB connection check failed'); console.error(error.message === 'replica-set-required' ? 'MongoDB requires a replica set or sharded cluster for bookings.' : 'MongoDB check failed. Check credentials, network access, and database permissions locally.'); }
     finally { await client.close(); }
     try {
-      await new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 10000, maxNetworkRetries: 0 }).balance.retrieve();
+      await new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 10000, maxNetworkRetries: 0 }).checkout.sessions.list({ limit: 1 });
       console.log('Stripe test API authentication passed. No payment was created.');
     } catch { problems.push('Stripe API check failed'); console.error('Stripe test API check failed. Check the key and network connection locally.'); }
     console.log('Google consent, imgbb uploads, signed webhook delivery and browser sessions still require end-to-end tests.');

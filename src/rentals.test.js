@@ -3,8 +3,31 @@ import assert from 'node:assert/strict';
 import Stripe from 'stripe';
 import { ObjectId } from 'mongodb';
 import { rentalPrice, peakQuantity, rentalService } from './rentals.js';
+import express from 'express';
 const now = new Date('2026-11-21T00:00:00Z');
 const input = { startDate: '2026-11-21', endDate: '2026-11-21', quantity: 2 };
+test('rental history recovers verified paid sessions once and scopes reconciliation to the customer', async () => {
+  const hold = { _id: new ObjectId(), customerId: 'customer-1', ownerId: 'owner-1', checkoutSessionId: 'cs_recover', status: 'reserved', total: 90000, currency: 'bdt' };
+  const bookings = [], payments = [];
+  const db = { collection: name => ({
+    find: filter => {
+      assert.equal(filter.customerId, 'customer-1');
+      const rows = name === 'holds' ? (hold.status === 'reserved' ? [hold] : []) : bookings;
+      const cursor = { sort: () => cursor, limit: () => cursor, toArray: async () => rows }; return cursor;
+    },
+    findOne: async () => hold,
+    updateOne: async (_filter, update) => { if (name === 'holds') Object.assign(hold,update.$set); else (name === 'bookings' ? bookings : payments).push(update.$setOnInsert); },
+  }) };
+  const stripe = { checkout: { sessions: { retrieve: async () => ({ id: 'cs_recover', payment_status: 'paid', amount_total: 90000, currency: 'bdt', payment_intent: 'pi_recover', metadata: { holdId: String(hold._id), customerId: 'customer-1' } }) } } };
+  const client = { startSession: () => ({ withTransaction: async fn => fn(), endSession: async () => {} }) };
+  const service = rentalService(db,client,stripe); const app = express();
+  app.use(service.router({ verifyToken: (req,_res,next) => { req.user = { _id: 'customer-1' }; next(); }, verifyRenter: (_req,_res,next) => next() }));
+  const server = app.listen(0,'127.0.0.1'); await new Promise(resolve => server.once('listening',resolve));
+  try {
+    for (let i=0;i<2;i++) { const response=await fetch(`http://127.0.0.1:${server.address().port}/rentals`); assert.equal(response.status,200); assert.equal((await response.json()).length,1); }
+    assert.equal(bookings.length,1); assert.equal(payments.length,1);
+  } finally { await new Promise(resolve => server.close(resolve)); }
+});
 test('inclusive dates, quantity, weekly and monthly rounding use minor currency units', () => {
   assert.equal(rentalPrice({ price: 12.25, rentalType: 'daily' }, input, now).total, 2450);
   const weekly = rentalPrice({ price: 100, rentalType: 'weekly' }, { ...input, endDate: '2026-11-28' }, now);

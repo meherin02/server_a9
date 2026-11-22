@@ -41,8 +41,8 @@ export async function rentalIndexes(db) {
     db.collection('holds').createIndex({ equipmentId: 1, status: 1, startDate: 1, endDate: 1 }),
   ]);
 }
-export function rentalService(db, client) {
-  const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+export function rentalService(db, client, stripeClient) {
+  const stripe = stripeClient || (process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null);
   const transaction = async work => { const session = client.startSession(); try { return await session.withTransaction(() => work(session)); } finally { await session.endSession(); } };
   async function finalize(checkout) {
     if (checkout.payment_status !== 'paid') return;
@@ -63,8 +63,8 @@ export function rentalService(db, client) {
     try { event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], process.env.STRIPE_WEBHOOK_SECRET); }
     catch { return res.status(400).json({ message: 'Invalid payment signature.' }); }
     const checkout = event.data.object;
-    if (event.type === 'checkout.session.completed') await finalize(checkout);
-    if (event.type === 'checkout.session.expired' && checkout.metadata?.holdId) {
+    if (['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(event.type)) await finalize(checkout);
+    if (['checkout.session.expired', 'checkout.session.async_payment_failed'].includes(event.type) && checkout.metadata?.holdId) {
       await db.collection('holds').updateOne({ _id: new ObjectId(checkout.metadata.holdId), status: { $in: ['creating', 'reserved'] } }, { $set: { status: 'expired' } });
     }
     res.json({ received: true });
@@ -92,7 +92,18 @@ export function rentalService(db, client) {
       if (!/^[a-f\d]{24}$/i.test(req.params.id)) return res.status(400).json({ message: 'Invalid equipment ID.' });
       await db.collection('favorites').deleteOne({ customerId: String(req.user._id), equipmentId: new ObjectId(req.params.id) }); res.json({ message: 'Favorite removed.' });
     });
-    router.get('/rentals', async (req, res) => res.json(await db.collection('bookings').find({ customerId: String(req.user._id) }).sort({ bookingDate: -1 }).toArray()));
+    router.get('/rentals', async (req, res) => {
+      // Recover verified payments when a webhook was delayed or the local listener was stopped.
+      // The customer scope is derived from JWT identity, never from request body/email.
+      if (stripe) {
+        const pending = await db.collection('holds').find({ customerId: String(req.user._id), status: 'reserved', checkoutSessionId: { $type: 'string' } }).sort({ createdAt: -1 }).limit(5).toArray();
+        await Promise.all(pending.map(async hold => {
+          try { await finalize(await stripe.checkout.sessions.retrieve(hold.checkoutSessionId, {}, { timeout: 5000, maxNetworkRetries: 0 })); }
+          catch { console.error('Payment reconciliation deferred; retry or webhook delivery is required.'); }
+        }));
+      }
+      res.json(await db.collection('bookings').find({ customerId: String(req.user._id) }).sort({ bookingDate: -1 }).toArray());
+    });
     router.post('/checkout', async (req, res) => {
       if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(503).json({ message: 'Stripe Checkout and webhook settings must be configured.' });
       const body = req.body;
@@ -115,7 +126,13 @@ export function rentalService(db, client) {
         throw error;
       }
       // A failed network call retains its hold: the session may have been created by Stripe.
-      const checkout = await stripe.checkout.sessions.create({ mode: 'payment', payment_method_types: ['card'], customer_email: req.user.email, expires_at: Math.floor(Date.now()/1000) + 1800, metadata: { holdId: String(holdId), customerId: hold.customerId }, line_items: [{ price_data: { currency: hold.currency, unit_amount: hold.total, product_data: { name: hold.equipmentName, description: `${hold.days} inclusive days · ${hold.quantity} item(s) · ${hold.units} billing unit(s)` } }, quantity: 1 }], success_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/cancel?equipment=${body.equipmentId}` }, { idempotencyKey: String(holdId) });
+      let checkout;
+      try { checkout = await stripe.checkout.sessions.create({ mode: 'payment', customer_email: req.user.email, expires_at: Math.floor(Date.now()/1000) + 1800, metadata: { holdId: String(holdId), customerId: hold.customerId }, line_items: [{ price_data: { currency: hold.currency, unit_amount: hold.total, product_data: { name: hold.equipmentName, description: `${hold.days} inclusive days · ${hold.quantity} item(s) · ${hold.units} billing unit(s)` } }, quantity: 1 }], success_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/cancel?equipment=${body.equipmentId}` }, { idempotencyKey: String(holdId) }); } catch (error) {
+        if (['StripeInvalidRequestError', 'StripeAuthenticationError', 'StripePermissionError'].includes(error.type)) {
+          await db.collection('holds').updateOne({ _id: holdId, status: 'creating' }, { $set: { status: 'failed' } });
+        }
+        throw error;
+      }
       await db.collection('holds').updateOne({ _id: holdId, status: 'creating' }, { $set: { status: 'reserved', checkoutSessionId: checkout.id } });
       res.json({ url: checkout.url });
     });
@@ -124,9 +141,15 @@ export function rentalService(db, client) {
       if (booking) return res.json({ status: 'paid', booking });
       const hold = await db.collection('holds').findOne({ checkoutSessionId: req.params.sessionId, customerId: String(req.user._id) });
       if (!hold) return res.status(404).json({ message: 'Checkout was not found for your account.' });
+      if (stripe && hold.status === 'reserved') {
+        await finalize(await stripe.checkout.sessions.retrieve(hold.checkoutSessionId));
+        const confirmed = await db.collection('bookings').findOne({ checkoutSessionId: req.params.sessionId, customerId: String(req.user._id) });
+        if (confirmed) return res.json({ status: 'paid', booking: confirmed });
+      }
       res.json({ status: hold.status === 'expired' ? 'expired' : 'processing' });
     });
     return router;
   }
   return { router, webhook };
 }
+

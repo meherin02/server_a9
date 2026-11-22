@@ -8,8 +8,10 @@ import { createAuthorization } from './middleware.js';
 import { equipmentRouter } from './equipment.js';
 import { rentalService, rentalIndexes } from './rentals.js';
 import { dashboardRouter } from './dashboard.js';
+import { configureMongoDns } from './database-dns.js';
 
 const app = express();
+configureMongoDns();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000', credentials: true }));
 let database;
 let mongoClient;
@@ -73,4 +75,4 @@ app.use((error, _req, res, _next) => {
   if (error.type === 'entity.parse.failed') return res.status(400).json({ message: 'Invalid request body.' });
   console.error(error.message); res.status(500).json({ message: 'Something went wrong. Please try again.' });
 });
-app.listen(process.env.PORT || 5000, () => console.log('GearHarbor API started'));
+app.listen(process.env.PORT || 5000, '0.0.0.0', () => console.log('GearHarbor API started'));

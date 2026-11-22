@@ -20,12 +20,14 @@ Setup generates a random Better Auth secret and creates `../client/.env.local`. 
 5. Stripe: use test mode and set `STRIPE_SECRET_KEY` to a test secret. With the Stripe CLI installed and authenticated, run the listener below in another terminal. Copy its signing secret into `STRIPE_WEBHOOK_SECRET` and restart the API.
 
 ```powershell
-stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5000/api/payments/webhook
+stripe listen --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed --forward-to localhost:5000/api/payments/webhook
 ```
 
 For deployment, use the HTTPS production webhook endpoint's signing secret, not the CLI listener's secret. Client and server auth deployment still require a real-browser cookie/session test.
 
 ## Check connections explicitly
+
+If Atlas SRV resolution fails with `ECONNREFUSED` on your network, optionally set `MONGODB_DNS_SERVERS=1.1.1.1,1.0.0.1` in the local server environment. This affects only the Node application process; it does not change Windows DNS. Leave it empty where the default resolver works.
 
 ```powershell
 npm run check:env
@@ -78,3 +80,4 @@ npm test
 ```
 
 The automated tests use database doubles for request rules; real MongoDB transaction concurrency and browser behavior still require the checks above. Inspect the root `requirements-audit.json` before submission. Deployment, review-video checks, live URLs and required meaningful commit counts remain separate submission gates.
+

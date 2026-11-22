@@ -46,15 +46,17 @@ Run `node --test src/equipment.test.js src/rentals.test.js src/dashboard.test.js
 
 ## Rentals and Stripe setup
 
+The payment result endpoint and customer rental history can recover paid reservations when webhook delivery is delayed: the server retrieves the customer's Checkout Session from Stripe and runs the same transactional, idempotent fulfillment. Rental history checks at most five recent pending sessions in parallel with bounded Stripe request timeouts. Webhooks remain required for unattended fulfillment and expiration. Run `node scripts/verify-payments.mjs` for a read-only record-count and revenue consistency check that does not print customer information or credentials.
+
 Use MongoDB Atlas or another replica set: rental holds and payment fulfillment require transactions. Startup creates unique indexes for favorites, booking Checkout Session IDs and payment Checkout Session IDs.
 
 Set `STRIPE_SECRET_KEY` to your Stripe test secret. Forward signed snapshot events to `POST /api/payments/webhook`. For local testing with the Stripe CLI:
 
 ```text
-stripe listen --events checkout.session.completed,checkout.session.expired --forward-to localhost:5000/api/payments/webhook
+stripe listen --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded,checkout.session.async_payment_failed --forward-to localhost:5000/api/payments/webhook
 ```
 
-Put the listener's signing secret in `STRIPE_WEBHOOK_SECRET` and restart the API. For production, register the HTTPS endpoint and use that endpoint's own signing secret. Only card payments are enabled. Fulfillment verifies the signature, paid status, amount, currency and customer reference before transactionally inserting booking and payment records. Duplicate events do not duplicate records.
+Put the listener's signing secret in `STRIPE_WEBHOOK_SECRET` and restart the API. For production, register the HTTPS endpoint and use that endpoint's own signing secret. Payment methods are managed through Stripe dynamic payment methods; delayed success/failure events are handled. Fulfillment verifies the signature, paid status, amount, currency and customer reference before transactionally inserting booking and payment records. Duplicate events do not duplicate records.
 
 Daily rentals count both start and end dates. Weekly periods are 7 days and monthly periods are 30 days, rounded up. Amounts in holds, bookings and payments are stored in minor currency units (BDT poisha). Dates are UTC calendar dates. Rental duration is limited to 366 days.
 
@@ -68,3 +70,12 @@ Concurrent bookings serialize through an equipment-document write inside a trans
 - `GET /api/customer/payments/:sessionId`
 
 Run `node --test src/equipment.test.js src/rentals.test.js`. Database doubles test request rules and webhook idempotency; live MongoDB concurrency and Stripe Checkout remain integration checks to run with credentials. Never use real card details for test-mode payments.
+
+
+## Deployment
+
+Follow [DEPLOYMENT.md](DEPLOYMENT.md) before publishing the Express service.
+
+Server repository: https://github.com/meherin02/server_a9
+
+Client repository: https://github.com/meherin02/client_a9

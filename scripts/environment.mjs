@@ -1,7 +1,9 @@
 import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
+import { configureMongoDns } from '../src/database-dns.js';
 export function loadEnvironment() {
   config({ path: fileURLToPath(new URL('../.env', import.meta.url)), quiet: true });
+  configureMongoDns();
 }
 export function inspectEnvironment(env) {
   const problems = [], warnings = [];
@@ -18,7 +20,7 @@ export function inspectEnvironment(env) {
       if (env.NODE_ENV === 'production' && (url.protocol !== 'https:' || ['localhost','127.0.0.1'].includes(url.hostname))) problems.push(`${key}: production requires a public HTTPS origin`);
     } catch { problems.push(`${key}: must be a plain HTTP(S) origin without a path or credentials`); }
   }
-  if (env.STRIPE_SECRET_KEY && !/^sk_test_/.test(env.STRIPE_SECRET_KEY)) problems.push('STRIPE_SECRET_KEY: use a Stripe test secret while validating the assignment');
+  if (env.STRIPE_SECRET_KEY && !/^(sk_test_|rkcs_test_)/.test(env.STRIPE_SECRET_KEY)) problems.push('STRIPE_SECRET_KEY: use a Stripe test secret while validating the assignment');
   if (env.STRIPE_WEBHOOK_SECRET && !env.STRIPE_WEBHOOK_SECRET.startsWith('whsec_')) problems.push('STRIPE_WEBHOOK_SECRET: expected a webhook signing secret');
   if (!env.MONGODB_DB) warnings.push('MONGODB_DB: defaults to gearharbor');
   if (!env.BOOTSTRAP_ADMIN_EMAIL || !env.BOOTSTRAP_ADMIN_PASSWORD) warnings.push('Admin bootstrap credentials are not configured');
