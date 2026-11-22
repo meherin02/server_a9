@@ -115,6 +115,25 @@ export function rentalService(db, client, stripeClient) {
       }
       res.json(await db.collection('bookings').find({ customerId: String(req.user._id) }).sort({ bookingDate: -1 }).toArray());
     });
+    router.post('/availability', async (req, res) => {
+      if (!/^[a-f\d]{24}$/i.test(req.body?.equipmentId || '')) return res.status(400).json({ message: 'Invalid equipment ID.' });
+      const item = await db.collection('equipment').findOne({ _id: new ObjectId(req.body.equipmentId), status: 'approved', archived: { $ne: true } });
+      if (!item) return res.status(404).json({ message: 'Equipment is no longer available.' });
+      let price;
+      try { price = rentalPrice(item, req.body); }
+      catch (error) { return res.status(400).json({ message: error.message }); }
+      const from = new Date(`${price.startDate}T00:00:00.000Z`);
+      const until = new Date(`${price.endDate}T00:00:00.000Z`);
+      const holds = await db.collection('holds').find({ equipmentId: String(item._id), status: { $in: ['creating', 'reserved', 'paid'] }, startDate: { $lte: price.endDate }, endDate: { $gte: price.startDate } }, { projection: { startDate: 1, endDate: 1, quantity: 1, status: 1, checkoutSessionId: 1 }, limit: 100 }).toArray();
+      const availableQuantity = Math.max(0, item.quantity - peakQuantity(holds, price.startDate, price.endDate));
+      const quotes = [];
+      for (let day = from; day <= until; day = new Date(day.getTime() + 86400000)) {
+        const date = day.toISOString().slice(0, 10);
+        const reserved = holds.filter(hold => hold.startDate <= date && hold.endDate >= date).reduce((total, hold) => total + hold.quantity, 0);
+        quotes.push({ date, available: Math.max(0, item.quantity - reserved) });
+      }
+      res.set('Cache-Control', 'no-store').json({ available: availableQuantity >= price.quantity, availableQuantity, requestedQuantity: price.quantity, days: price.days, units: price.units, total: price.total, currency: price.currency, quote: holds.some(hold => hold.status === 'creating') ? 'provisional' : 'current', daysAvailability: quotes });
+    });
     router.post('/checkout', async (req, res) => {
       if (!stripe || !process.env.STRIPE_WEBHOOK_SECRET) return res.status(503).json({ message: 'Stripe Checkout and webhook settings must be configured.' });
       const body = req.body;

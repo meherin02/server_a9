@@ -50,6 +50,32 @@ test('availability counts peak simultaneous demand rather than summing separate 
   assert.equal(peakQuantity(rows, '2026-11-21', '2026-11-24'), 3);
   assert.equal(peakQuantity([...rows, { startDate: '2026-11-22', endDate: '2026-11-23', quantity: 1 }], '2026-11-21', '2026-11-24'), 4);
 });
+test('customer availability quote returns authoritative billing and per-day remaining stock', async () => {
+  process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder';
+  const equipmentId = new ObjectId();
+  const from = new Date().toISOString().slice(0,10), until = new Date(Date.now()+86400000).toISOString().slice(0,10);
+  const holds = [{ startDate: from, endDate: until, quantity: 1, status: 'paid' }];
+  const item = { _id: equipmentId, price: 100, rentalType: 'daily', quantity: 2, status: 'approved' };
+  const db = { collection: name => name === 'equipment' ? { findOne: async () => item } : { find: filter => {
+    assert.deepEqual(filter.status.$in, ['creating','reserved','paid']);
+    return { toArray: async () => holds };
+  } } };
+  const service = rentalService(db, {}, { checkout: { sessions: {} } });
+  const app = express();
+  app.use(express.json());
+  app.use(service.router({ verifyToken: (req,_res,next) => { req.user = { _id: 'customer-1' }; next(); }, verifyRenter: (_req,_res,next) => next() }));
+  const server = app.listen(0,'127.0.0.1'); await new Promise(resolve => server.once('listening',resolve));
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0,10);
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/availability`, { method: 'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ equipmentId: String(equipmentId), startDate:today, endDate:tomorrow, quantity:2 }) });
+    assert.equal(response.status,200);
+    const quote = await response.json();
+    assert.equal(quote.available,false); assert.equal(quote.availableQuantity,1); assert.equal(quote.total,40000); assert.deepEqual(quote.daysAvailability.map(day => day.available),[1,1]);
+    assert.equal(response.headers.get('cache-control'),'no-store');
+  } finally { await new Promise(resolve => server.close(resolve)); }
+  delete process.env.STRIPE_SECRET_KEY;
+});
 test('signed payment webhook creates one booking/payment and rejects tampered totals and signatures', async () => {
   process.env.STRIPE_SECRET_KEY = 'sk_test_placeholder'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_placeholder';
   const hold = { _id: new ObjectId(), customerId: 'customer-1', ownerId: 'owner-1', total: 10000, currency: 'bdt', status: 'reserved', checkoutSessionId: 'cs_test_123' };
