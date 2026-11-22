@@ -37,7 +37,13 @@ app.get('/api/me', verifyToken, (req, res) => {
 app.get('/api/customer/access', verifyToken, verifyRenter, (_req, res) => res.json({ role: 'customer' }));
 app.get('/api/owner/access', verifyToken, verifyOwner, (_req, res) => res.json({ role: 'owner' }));
 app.get('/api/admin/access', verifyToken, verifyAdmin, (_req, res) => res.json({ role: 'admin' }));
-app.get('/api/health', (_req, res) => res.json({ service: 'GearHarbor API', database: database ? 'connected' : 'not configured' }));
+app.get('/api/health', async (_req, res) => {
+  if (!database) return res.status(503).json({ service: 'GearHarbor API', database: 'not configured' });
+  try {
+    await database.command({ ping: 1 }, { timeoutMS: 3000 });
+    res.set('Cache-Control', 'no-store').json({ service: 'GearHarbor API', database: 'connected' });
+  } catch { res.status(503).json({ service: 'GearHarbor API', database: 'unavailable' }); }
+});
 app.get('/api/equipment', async (req, res, next) => {
   try {
     if (!database) return res.status(503).json({ message: 'Database is not configured.' });
