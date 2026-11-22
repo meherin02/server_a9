@@ -1,6 +1,6 @@
 import { Router, raw } from 'express';
 import { ObjectId } from 'mongodb';
-export const categories = ['Construction', 'Photography', 'Vehicles', 'Agriculture', 'Electronics', 'Events'];
+export const categories = ['Construction', 'Photography', 'Vehicles', 'Agriculture', 'Electronics', 'Events', 'Fashion', 'Outdoor', 'Music'];
 export function validateEquipment(body) {
   const item = {};
   for (const field of ['name', 'description', 'location', 'condition', 'brand', 'model', 'terms']) {
@@ -69,3 +69,4 @@ export function equipmentRouter(database, auth) {
   });
   return router;
 }
+
