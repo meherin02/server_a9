@@ -21,7 +21,7 @@ if (process.argv.includes('--online')) {
       await new Stripe(process.env.STRIPE_SECRET_KEY, { timeout: 10000, maxNetworkRetries: 0 }).checkout.sessions.list({ limit: 1 });
       console.log('Stripe test API authentication passed. No payment was created.');
     } catch { problems.push('Stripe API check failed'); console.error('Stripe test API check failed. Check the key and network connection locally.'); }
-    console.log('Google consent, imgbb uploads, signed webhook delivery and browser sessions still require end-to-end tests.');
+    console.log('Google consent, imgbb uploads, signed webhook delivery, vendor Connect permissions and browser sessions still require end-to-end tests.');
   }
 }
 process.exitCode = problems.length ? 1 : 0;

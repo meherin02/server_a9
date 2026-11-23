@@ -21,6 +21,7 @@ export function inspectEnvironment(env) {
     } catch { problems.push(`${key}: must be a plain HTTP(S) origin without a path or credentials`); }
   }
   if (env.STRIPE_SECRET_KEY && !/^(sk_test_|rkcs_test_)/.test(env.STRIPE_SECRET_KEY)) problems.push('STRIPE_SECRET_KEY: use a Stripe test secret while validating the assignment');
+  if (env.STRIPE_SECRET_KEY?.startsWith('rkcs_test_')) warnings.push('STRIPE_SECRET_KEY: claimable sandbox restricted key cannot create vendor Connect accounts; claim the sandbox and replace it with its full test secret key');
   if (env.STRIPE_WEBHOOK_SECRET && !env.STRIPE_WEBHOOK_SECRET.startsWith('whsec_')) problems.push('STRIPE_WEBHOOK_SECRET: expected a webhook signing secret');
   if (!env.MONGODB_DB) warnings.push('MONGODB_DB: defaults to gearharbor');
   if (!env.BOOTSTRAP_ADMIN_EMAIL || !env.BOOTSTRAP_ADMIN_PASSWORD) warnings.push('Admin bootstrap credentials are not configured');

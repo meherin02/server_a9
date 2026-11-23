@@ -14,3 +14,9 @@ test('diagnostics reject production localhost, insecure origins and live Stripe 
   assert.equal(result.problems.length, 3);
   assert.ok(inspectEnvironment({ ...valid, CLIENT_ORIGIN: 'https://example.com/path' }).problems.length);
 });
+test('diagnostics flag claimable sandbox keys that block vendor payouts without exposing the key', () => {
+  const key = 'rkcs_test_secret-example';
+  const result = inspectEnvironment({ ...valid, STRIPE_SECRET_KEY: key });
+  assert.ok(result.warnings.some(warning => warning.includes('vendor Connect accounts')));
+  assert.ok(!JSON.stringify(result).includes(key));
+});
