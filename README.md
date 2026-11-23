@@ -10,15 +10,7 @@ Run `npm install`, copy `.env.example` to `.env`, and supply your MongoDB connec
 
 For Google sign-in, configure a Google OAuth web client with `http://localhost:5000/api/auth/callback/google` as a development redirect URI. Supply its client ID and secret in the server environment. Configure the corresponding HTTPS callback before deployment.
 
-New accounts receive the customer role. The role cannot be set during registration. Protected endpoints verify JWTs against Better Auth's JWKS and load the current database role. Customers can upgrade their own account through `POST /api/vendor/join`; admin accounts cannot. Admin and Owner accounts have been provisioned; passwords are not stored in the repository.
-
-## Vendor onboarding and payouts
-
-Vendor onboarding reuses the existing `STRIPE_SECRET_KEY` and webhook setup; no second Stripe key is needed. Leave `STRIPE_CONNECT_COUNTRY` blank to use the Stripe platform account country, or set it to a country supported by that platform and destination charges. Set `VENDOR_PLATFORM_FEE_PERCENT` (default 10). In Stripe, enable Connect Express and finish any platform onboarding. `POST /api/vendor/onboard` creates an Express account and returns a short-lived hosted onboarding URL. `GET /api/vendor/status` checks current charge and payout capabilities; `POST /api/vendor/payout-dashboard` opens the vendor's Express dashboard. Never store bank details in GearHarbor.
-
-A claimable sandbox key beginning `rkcs_test_` can read Stripe account details but cannot create connected accounts. Claim that sandbox in Stripe, obtain its full `sk_test_` key, and replace `STRIPE_SECRET_KEY` in the ignored server `.env` and Render's server environment. Keep the same sandbox when replacing the key so the webhook signing secret and existing test data remain aligned. Do not put the secret in the client or Git. `npm run check:env` warns when the restricted key is present.
-
-New self-serve vendors' approved listings can enter Checkout only after their owner has an Express account with both charges and payouts enabled. Existing bootstrapped owners without Connect retain the original platform-only Checkout until they onboard; those historical/platform-only payments do **not** pay the owner automatically. Connected owners' Checkout uses a destination charge with `application_fee_amount` for GearHarbor's fee and `transfer_data.destination` for the vendor. The split is stored in the hold and paid payment record. Owner analytics count the vendor share on new split payments; platform-only payments have no documented vendor share and are excluded from vendor earnings. Stripe processing fees, refunds, disputes and payout timing are managed according to the Stripe account configuration; displayed earnings are the rental split, not a bank payout confirmation. Test account onboarding, a paid booking, webhook delivery, and the connected account's transfer in Stripe test mode before enabling live payments. Regional and currency support must be confirmed in your Stripe account.
+New accounts receive the customer role. The role cannot be set during registration. Protected endpoints verify JWTs against Better Auth's JWKS and load the current database role. Admins can assign the Owner role. Admin and Owner accounts have been provisioned; passwords are not stored in the repository.
 
 ## Current endpoints
 

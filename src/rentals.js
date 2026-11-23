@@ -1,12 +1,6 @@
 import { Router } from 'express';
 import { ObjectId } from 'mongodb';
 import Stripe from 'stripe';
-import { vendorFeePercent } from './vendor.js';
-export function vendorSplit(total, percent = vendorFeePercent()) {
-  if (!Number.isSafeInteger(total) || total < 1 || !Number.isInteger(percent) || percent < 1 || percent > 99) throw new Error('Invalid vendor payment split.');
-  const platformFee = Math.round(total * percent / 100);
-  return { platformFee, ownerEarnings: total - platformFee };
-}
 export function rentalPrice(item, input, now = new Date()) {
   const parse = value => {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Choose valid rental dates.');
@@ -70,7 +64,7 @@ export function rentalService(db, client, stripeClient) {
       if (!['reserved', 'creating'].includes(hold.status)) throw new Error('Reservation is not payable.');
       const bookingId = hold._id, paidAt = new Date();
       await db.collection('bookings').updateOne({ checkoutSessionId: checkout.id }, { $setOnInsert: { ...hold, _id: bookingId, checkoutSessionId: checkout.id, paymentStatus: 'paid', bookingStatus: 'confirmed', bookingDate: paidAt } }, { upsert: true, session });
-      await db.collection('payments').updateOne({ checkoutSessionId: checkout.id }, { $setOnInsert: { bookingId: String(bookingId), checkoutSessionId: checkout.id, paymentIntentId: checkout.payment_intent, customerId: hold.customerId, ownerId: hold.ownerId, amount: hold.total, platformFee: hold.platformFee, ownerEarnings: hold.ownerEarnings, stripeAccountId: hold.stripeAccountId, currency: hold.currency, status: 'paid', paidAt } }, { upsert: true, session });
+      await db.collection('payments').updateOne({ checkoutSessionId: checkout.id }, { $setOnInsert: { bookingId: String(bookingId), checkoutSessionId: checkout.id, paymentIntentId: checkout.payment_intent, customerId: hold.customerId, ownerId: hold.ownerId, amount: hold.total, currency: hold.currency, status: 'paid', paidAt } }, { upsert: true, session });
       await db.collection('holds').updateOne({ _id: hold._id }, { $set: { status: 'paid', checkoutSessionId: checkout.id } }, { session });
     });
   }
@@ -145,29 +139,16 @@ export function rentalService(db, client, stripeClient) {
       const body = req.body;
       if (!/^[a-f\d]{24}$/i.test(body.equipmentId)) return res.status(400).json({ message: 'Invalid equipment ID.' });
       if (typeof body.contact !== 'string' || !/^[+\d ()-]{7,25}$/.test(body.contact) || typeof body.address !== 'string' || body.address.trim().length < 5 || body.address.length > 1000 || (body.notes && (typeof body.notes !== 'string' || body.notes.length > 2000))) return res.status(400).json({ message: 'Provide a valid contact number, delivery address, and notes under 2000 characters.' });
-      const listing = await db.collection('equipment').findOne({ _id: new ObjectId(body.equipmentId), status: 'approved', archived: { $ne: true } });
-      if (!listing) return res.status(404).json({ message: 'Equipment is no longer available.' });
-      const ownerIds = [{ _id: String(listing.ownerId) }];
-      if (ObjectId.isValid(String(listing.ownerId))) ownerIds.push({ _id: new ObjectId(String(listing.ownerId)) });
-      const owner = await db.collection('user').findOne({ $or: ownerIds });
-      if (!owner || owner.suspended || owner.role !== 'owner') return res.status(409).json({ message: 'This owner cannot accept bookings right now.' });
-      if (owner.selfServeVendor && !owner.stripeAccountId) return res.status(409).json({ message: 'This owner has not finished payout setup yet. Please try another listing.' });
-      if (owner.stripeAccountId) {
-        const account = await stripe.accounts.retrieve(owner.stripeAccountId);
-        if (!account.charges_enabled || !account.payouts_enabled) return res.status(409).json({ message: 'This owner has not finished payout setup yet. Please try another listing.' });
-      }
       const holdId = new ObjectId(); let hold;
       await releaseExpiredReservations(db, stripe, body.equipmentId);
       try {
         hold = await transaction(async session => {
           const item = await db.collection('equipment').findOneAndUpdate({ _id: new ObjectId(body.equipmentId), status: 'approved', archived: { $ne: true } }, { $inc: { reservationRevision: 1 } }, { returnDocument: 'after', session });
           if (!item) throw new Error('Equipment is no longer available.');
-          if (String(item.ownerId) !== String(listing.ownerId)) throw new Error('Equipment owner changed. Please try again.');
           const price = rentalPrice(item, body);
-          const split = owner.stripeAccountId ? vendorSplit(price.total) : {};
           const rows = await db.collection('holds').find({ equipmentId: body.equipmentId, status: { $in: ['creating', 'reserved', 'paid'] }, startDate: { $lte: price.endDate }, endDate: { $gte: price.startDate } }, { session }).toArray();
           if (peakQuantity(rows, price.startDate, price.endDate) + price.quantity > item.quantity) throw new Error('Not enough equipment is available for these dates.');
-          const reservation = { _id: holdId, ...price, ...split, stripeAccountId: owner.stripeAccountId, equipmentId: body.equipmentId, equipmentName: item.name, rentalType: item.rentalType, ownerId: item.ownerId, customerId: String(req.user._id), customer: { name: req.user.name, email: req.user.email }, owner: item.owner, contact: body.contact, address: body.address.trim(), notes: body.notes || '', status: 'creating', createdAt: new Date() };
+          const reservation = { _id: holdId, ...price, equipmentId: body.equipmentId, equipmentName: item.name, rentalType: item.rentalType, ownerId: item.ownerId, customerId: String(req.user._id), customer: { name: req.user.name, email: req.user.email }, owner: item.owner, contact: body.contact, address: body.address.trim(), notes: body.notes || '', status: 'creating', createdAt: new Date() };
           await db.collection('holds').insertOne(reservation, { session }); return reservation;
         });
       } catch (error) {
@@ -177,7 +158,7 @@ export function rentalService(db, client, stripeClient) {
       }
       // A failed network call retains its hold: the session may have been created by Stripe.
       let checkout;
-      try { checkout = await stripe.checkout.sessions.create({ mode: 'payment', customer_email: req.user.email, expires_at: Math.floor(Date.now()/1000) + 1800, metadata: { holdId: String(holdId), customerId: hold.customerId }, ...(hold.stripeAccountId ? { payment_intent_data: { application_fee_amount: hold.platformFee, transfer_data: { destination: hold.stripeAccountId } } } : {}), line_items: [{ price_data: { currency: hold.currency, unit_amount: hold.total, product_data: { name: hold.equipmentName, description: `${hold.days} inclusive days · ${hold.quantity} item(s) · ${hold.units} billing unit(s)` } }, quantity: 1 }], success_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/cancel?equipment=${body.equipmentId}` }, { idempotencyKey: String(holdId) }); } catch (error) {
+      try { checkout = await stripe.checkout.sessions.create({ mode: 'payment', customer_email: req.user.email, expires_at: Math.floor(Date.now()/1000) + 1800, metadata: { holdId: String(holdId), customerId: hold.customerId }, line_items: [{ price_data: { currency: hold.currency, unit_amount: hold.total, product_data: { name: hold.equipmentName, description: `${hold.days} inclusive days · ${hold.quantity} item(s) · ${hold.units} billing unit(s)` } }, quantity: 1 }], success_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/success?session_id={CHECKOUT_SESSION_ID}`, cancel_url: `${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}/payment/cancel?equipment=${body.equipmentId}` }, { idempotencyKey: String(holdId) }); } catch (error) {
         if (['StripeInvalidRequestError', 'StripeAuthenticationError', 'StripePermissionError'].includes(error.type)) {
           await db.collection('holds').updateOne({ _id: holdId, status: 'creating' }, { $set: { status: 'failed' } });
         }

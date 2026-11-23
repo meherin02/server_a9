@@ -24,7 +24,7 @@ for (const role of ['owner', 'admin']) {
     const me = await get('/me'); assert.equal(me.role,role);
     const [analytics, rentals] = await Promise.all([get(`/${role}/analytics`),get(`/${role}/rentals`)]);
     assert.equal(analytics.bookings,rentals.length);
-    assert.equal(analytics.revenue,rentals.filter(row => row.paymentStatus === 'paid').reduce((sum,row) => sum + (role === 'owner' ? row.ownerEarnings || 0 : row.total),0));
+    assert.equal(analytics.revenue,rentals.filter(row => row.paymentStatus === 'paid').reduce((sum,row) => sum + row.total,0));
     assert.equal(analytics.monthly.length,12);
     if (role === 'owner') assert.ok(rentals.every(row => row.ownerId === me.id));
     const forbidden = await fetch(`${base}/api/${role === 'owner' ? 'admin' : 'owner'}/analytics`, { headers: { Authorization: `Bearer ${token}` } });
