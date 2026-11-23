@@ -10,7 +10,7 @@ Run `npm install`, copy `.env.example` to `.env`, and supply your MongoDB connec
 
 For Google sign-in, configure a Google OAuth web client with `http://localhost:5000/api/auth/callback/google` as a development redirect URI. Supply its client ID and secret in the server environment. Configure the corresponding HTTPS callback before deployment.
 
-New accounts receive the customer role. The role cannot be set during registration. Protected endpoints verify JWTs against Better Auth's JWKS and load the current database role. Admins can assign the Owner role. Admin and Owner accounts have been provisioned; passwords are not stored in the repository.
+New accounts receive the customer role. The role cannot be set during registration. Customers can request Owner access from their dashboard; admins review pending requests and approve or reject them. Approval changes the account role atomically. Protected endpoints verify JWTs against Better Auth's JWKS and load the current database role. Admins can also assign the Owner role directly. Admin and Owner accounts have been provisioned; passwords are not stored in the repository.
 
 ## Current endpoints
 
@@ -18,6 +18,8 @@ New accounts receive the customer role. The role cannot be set during registrati
 - `/api/auth/*` Better Auth email/password, Google, sessions and JWT endpoints
 - `GET /api/me` authenticated profile
 - `GET /api/customer/access`, `/api/owner/access`, `/api/admin/access` role checks
+- `GET` and `POST /api/customer/owner-request` view and submit an Owner request; duplicate pending requests are blocked
+- `GET /api/admin/owner-requests` and `PATCH /api/admin/owner-requests/:id` review, approve or reject requests
 - `GET /api/equipment` approved equipment search, filters, sorting, pagination
 - `GET /api/equipment/:id` private equipment details
 - `POST /api/equipment` owner submission, always pending

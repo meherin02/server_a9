@@ -26,6 +26,19 @@ export function dashboardRouter(db, auth) {
     await db.collection('user').updateOne({ _id: req.user._id }, { $set: { ...update, updatedAt: new Date() } });
     res.json({ message: 'Profile updated.' });
   });
+  router.get('/customer/owner-request', auth.verifyRenter, (req, res) => {
+    res.json(req.user.ownerRequest || null);
+  });
+  router.post('/customer/owner-request', auth.verifyRenter, async (req, res) => {
+    const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+    if (message.length < 20 || message.length > 500) return res.status(400).json({ message: 'Describe the equipment you want to list in 20 to 500 characters.' });
+    const now = new Date();
+    const result = await db.collection('user').updateOne(
+      { _id: req.user._id, role: 'customer', 'ownerRequest.status': { $ne: 'pending' } },
+      { $set: { ownerRequest: { status: 'pending', message, submittedAt: now }, updatedAt: now } },
+    );
+    res.status(result.matchedCount ? 201 : 409).json({ message: result.matchedCount ? 'Your owner request was sent to the admin.' : 'You already have a pending owner request.' });
+  });
   for (const role of ['owner','admin']) {
     const guard = role === 'owner' ? auth.verifyOwner : auth.verifyAdmin;
     router.get(`/${role}/rentals`, guard, async (req,res) => {
@@ -43,7 +56,7 @@ export function dashboardRouter(db, auth) {
     router.get(`/${role}/analytics`, guard, async (req,res) => {
       const owner = role === 'owner'; const filter = owner ? { ownerId: String(req.user._id) } : {};
       const since = new Date(); since.setUTCDate(1); since.setUTCHours(0,0,0,0); since.setUTCMonth(since.getUTCMonth()-11);
-      const [equipment, completed, bookings, pending, users, revenue, monthlyBookings, monthlyEarnings] = await Promise.all([
+      const [equipment, completed, bookings, pending, users, revenue, monthlyBookings, monthlyEarnings, ownerRequests] = await Promise.all([
         db.collection('equipment').countDocuments({ ...filter, archived: { $ne: true } }),
         db.collection('bookings').countDocuments({ ...filter, bookingStatus: 'completed' }),
         db.collection('bookings').countDocuments(filter),
@@ -52,17 +65,36 @@ export function dashboardRouter(db, auth) {
         db.collection('payments').aggregate([{ $match: { ...filter, status: 'paid' } }, { $group: { _id: null, amount: { $sum: '$amount' } } }]).toArray(),
         db.collection('bookings').aggregate([{ $match: { ...filter, bookingDate: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$bookingDate', timezone: 'UTC' } }, value: { $sum: 1 } } }]).toArray(),
         db.collection('payments').aggregate([{ $match: { ...filter, status: 'paid', paidAt: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$paidAt', timezone: 'UTC' } }, value: { $sum: '$amount' } } }]).toArray(),
+        owner ? 0 : db.collection('user').countDocuments({ role: 'customer', 'ownerRequest.status': 'pending' }),
       ]);
       const monthly = Array.from({ length: 12 }, (_, i) => { const date = new Date(since); date.setUTCMonth(date.getUTCMonth()+i); const month = date.toISOString().slice(0,7); return { month, bookings: monthlyBookings.find(r => r._id === month)?.value || 0, earnings: monthlyEarnings.find(r => r._id === month)?.value || 0 }; });
-      res.json({ equipment, completed, bookings, pending, users, revenue: revenue[0]?.amount || 0, monthly });
+      res.json({ equipment, completed, bookings, pending, users, ownerRequests, revenue: revenue[0]?.amount || 0, monthly });
     });
   }
-  router.get('/admin/users', auth.verifyAdmin, async (_req,res) => res.json(await db.collection('user').find({}, { projection: { name: 1, email: 1, role: 1, createdAt: 1, suspended: 1 } }).sort({ createdAt: -1 }).toArray()));
+  router.get('/admin/owner-requests', auth.verifyAdmin, async (_req, res) => {
+    res.json(await db.collection('user').find(
+      { role: 'customer', 'ownerRequest.status': 'pending' },
+      { projection: { name: 1, email: 1, image: 1, ownerRequest: 1, createdAt: 1 } },
+    ).sort({ 'ownerRequest.submittedAt': 1 }).toArray());
+  });
+  router.patch('/admin/owner-requests/:id', auth.verifyAdmin, async (req, res) => {
+    if (!/^[a-f\d]{24}$/i.test(req.params.id)) return res.status(400).json({ message: 'Invalid user ID.' });
+    if (!['approved', 'rejected'].includes(req.body?.status)) return res.status(400).json({ message: 'Choose approve or reject.' });
+    const now = new Date();
+    const update = { 'ownerRequest.status': req.body.status, 'ownerRequest.decidedAt': now, updatedAt: now };
+    if (req.body.status === 'approved') update.role = 'owner';
+    const result = await db.collection('user').updateOne(
+      { _id: new ObjectId(req.params.id), role: 'customer', 'ownerRequest.status': 'pending' },
+      { $set: update },
+    );
+    res.status(result.matchedCount ? 200 : 409).json({ message: result.matchedCount ? `Owner request ${req.body.status}.` : 'This request has already changed. Refresh the list.' });
+  });
+  router.get('/admin/users', auth.verifyAdmin, async (_req,res) => res.json(await db.collection('user').find({}, { projection: { name: 1, email: 1, role: 1, createdAt: 1, suspended: 1, ownerRequest: 1 } }).sort({ createdAt: -1 }).toArray()));
   router.patch('/admin/users/:id', auth.verifyAdmin, async (req,res) => {
     if (!/^[a-f\d]{24}$/i.test(req.params.id)) return res.status(400).json({ message: 'Invalid user ID.' });
     if (req.params.id === String(req.user._id)) return res.status(409).json({ message: 'You cannot change your own administrative access.' });
     const update = {};
-    if (req.body.role !== undefined) { if (!['customer','owner','admin'].includes(req.body.role)) return res.status(400).json({ message: 'Choose a valid role.' }); update.role = req.body.role; }
+    if (req.body.role !== undefined) { if (!['customer','owner','admin'].includes(req.body.role)) return res.status(400).json({ message: 'Choose a valid role.' }); update.role = req.body.role; if (req.body.role === 'owner') { update['ownerRequest.status'] = 'approved'; update['ownerRequest.decidedAt'] = new Date(); } }
     if (req.body.suspended !== undefined) { if (typeof req.body.suspended !== 'boolean') return res.status(400).json({ message: 'Invalid account status.' }); update.suspended = req.body.suspended; }
     if (!Object.keys(update).length) return res.status(400).json({ message: 'No account changes provided.' });
     const result = await db.collection('user').updateOne({ _id: new ObjectId(req.params.id) }, { $set: { ...update, updatedAt: new Date() } });
