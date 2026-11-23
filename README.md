@@ -82,6 +82,7 @@ Run `node --test src/equipment.test.js src/rentals.test.js`. Database doubles te
 
 Production API acceptance tools:
 
+- `npm run verify:session-webhook` checks owner sign-in/session continuity through the frontend proxy and verifies that the deployed webhook accepts a correctly signed, unhandled probe event while rejecting a bad signature. It reads local ignored credentials and signs no real Stripe event. Override the deployment origins with `VERIFY_CLIENT_ORIGIN` and `VERIFY_API_ORIGIN` if needed.
 - `node scripts/verify-dashboards.mjs --production` checks the configured Owner/Admin login, JWT, analytics totals and cross-role denial through the public frontend proxy.
 - `node scripts/verify-equipment-workflow.mjs` creates a temporary zero-stock listing, tests owner updates and admin approval/rejection/public visibility, then archives the listing and signs out its test sessions. It also checks profile saves without changing profile values. Run deliberately against the deployed assignment environment; it writes test data.
 

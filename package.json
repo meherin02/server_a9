@@ -10,6 +10,7 @@
     "test": "node --test --test-concurrency=1 src/equipment.test.js src/rentals.test.js src/dashboard.test.js scripts/environment.test.mjs",
     "verify:dashboards": "node scripts/verify-dashboards.mjs",
     "verify:payments": "node scripts/verify-payments.mjs",
+    "verify:session-webhook": "node scripts/verify-session-webhook.mjs",
     "seed:equipment": "node scripts/seed-equipment.mjs",
     "check:env": "node scripts/check-env.mjs",
     "bootstrap": "node scripts/bootstrap.mjs",
