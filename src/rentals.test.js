@@ -2,10 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import Stripe from 'stripe';
 import { ObjectId } from 'mongodb';
-import { rentalPrice, peakQuantity, rentalService, releaseExpiredReservations } from './rentals.js';
+import { rentalPrice, peakQuantity, rentalService, releaseExpiredReservations, vendorSplit } from './rentals.js';
 import express from 'express';
 const now = new Date('2026-11-21T00:00:00Z');
 const input = { startDate: '2026-11-21', endDate: '2026-11-21', quantity: 2 };
+test('vendor split uses whole minor currency units and preserves the full charge', () => {
+  assert.deepEqual(vendorSplit(270001, 10), { platformFee: 27000, ownerEarnings: 243001 });
+  assert.equal(vendorSplit(270001, 10).platformFee + vendorSplit(270001, 10).ownerEarnings, 270001);
+  assert.throws(() => vendorSplit(1000, 100));
+});
 test('expiration recovery releases only verified expired unpaid sessions', async () => {
   const writes=[];
   const rows=['expired','paid','open','unreachable'].map(id=>({_id:id,checkoutSessionId:id}));

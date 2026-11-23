@@ -9,6 +9,7 @@ import { equipmentRouter } from './equipment.js';
 import { rentalService, rentalIndexes } from './rentals.js';
 import { dashboardRouter } from './dashboard.js';
 import { configureMongoDns } from './database-dns.js';
+import { vendorRouter } from './vendor.js';
 
 const app = express();
 configureMongoDns();
@@ -75,6 +76,7 @@ app.get('/api/equipment', async (req, res, next) => {
 app.use('/api', equipmentRouter(database, { verifyToken, verifyOwner, verifyAdmin }));
 app.use('/api/customer', rentals.router({ verifyToken, verifyRenter }));
 app.use('/api', dashboardRouter(database, { verifyToken, verifyOwner, verifyAdmin }));
+app.use('/api/vendor', vendorRouter(database, { verifyToken, verifyOwner }));
 app.use((_req, res) => res.status(404).json({ message: 'Endpoint not found.' }));
 app.use((error, _req, res, _next) => {
   if (error.type === 'entity.too.large') return res.status(413).json({ message: 'Image must be smaller than 5 MB.' });

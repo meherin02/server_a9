@@ -49,9 +49,9 @@ export function dashboardRouter(db, auth) {
         db.collection('bookings').countDocuments(filter),
         db.collection('equipment').countDocuments({ ...filter, archived: { $ne: true }, status: 'pending' }),
         owner ? 0 : db.collection('user').countDocuments({}),
-        db.collection('payments').aggregate([{ $match: { ...filter, status: 'paid' } }, { $group: { _id: null, amount: { $sum: '$amount' } } }]).toArray(),
+        db.collection('payments').aggregate([{ $match: { ...filter, status: 'paid' } }, { $group: { _id: null, amount: { $sum: owner ? '$ownerEarnings' : '$amount' } } }]).toArray(),
         db.collection('bookings').aggregate([{ $match: { ...filter, bookingDate: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$bookingDate', timezone: 'UTC' } }, value: { $sum: 1 } } }]).toArray(),
-        db.collection('payments').aggregate([{ $match: { ...filter, status: 'paid', paidAt: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$paidAt', timezone: 'UTC' } }, value: { $sum: '$amount' } } }]).toArray(),
+        db.collection('payments').aggregate([{ $match: { ...filter, status: 'paid', paidAt: { $gte: since } } }, { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$paidAt', timezone: 'UTC' } }, value: { $sum: owner ? '$ownerEarnings' : '$amount' } } }]).toArray(),
       ]);
       const monthly = Array.from({ length: 12 }, (_, i) => { const date = new Date(since); date.setUTCMonth(date.getUTCMonth()+i); const month = date.toISOString().slice(0,7); return { month, bookings: monthlyBookings.find(r => r._id === month)?.value || 0, earnings: monthlyEarnings.find(r => r._id === month)?.value || 0 }; });
       res.json({ equipment, completed, bookings, pending, users, revenue: revenue[0]?.amount || 0, monthly });
